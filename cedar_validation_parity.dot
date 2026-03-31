@@ -1,0 +1,124 @@
+digraph CedarValidationParity {
+  graph [
+    label="Cedar Validation 100% Parity",
+    goal="Fix all validation corpus test failures. Current: policy strict 89.1% (844 fail), policy permissive 84.3% (1216 fail), entity 98.6% (106 fail), request 98.4% (985 fail). The validation corpus runner is at Tests/CedarSpecSwiftTests/CorpusValidationTests.swift. The validation logic is in Sources/CedarSpecSwift/Validation.swift. The JSON schema loader is in Sources/CedarSpecSwift/SchemaLoader.swift. The failures are all 'expected true, got false' — our validator is too strict (rejecting valid inputs). Run with: CEDAR_CORPUS_LIMIT=all swift test --filter CorpusValidation to see results. Fix the validator to match Cedar spec validation semantics. Bundle fixes into large slices. Do NOT modify the test runner. Auth DRT (7750/7750) must stay at 100% — verify with: CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT.",
+    source_ref="REPLACE_WITH_REFERENCE_PATH",
+    planning_dir=".ai/cedar-validation-parity",
+    target_package="CedarSpecSwift",
+    target_source_dir="Sources/CedarSpecSwift",
+    target_test_dir="Tests/CedarSpecSwiftTests",
+    rankdir=LR,
+    default_max_retry=30,
+    model_stylesheet="* { llm_provider: openai; llm_model: gpt-5.4; reasoning_effort: high; }"
+  ];
+
+  Start [shape=Mdiamond, label="Start"];
+  Exit [shape=Msquare, label="Exit"];
+
+  EnsureWorkspace [
+    shape=parallelogram,
+    label="Ensure workspace",
+    tool_command="set -eu\nmkdir -p \"$planning_dir\"\nif [ ! -f \"$planning_dir/implementation-spec.md\" ]; then\n  cat > \"$planning_dir/implementation-spec.md\" <<'EOF'\n# Validation Parity Plan\n\n## Goal\n- Fix all validation corpus failures.\n\n## Checklist\n- [ ] Placeholder.\n\n## Next Slice\n- Pending.\nEOF\nfi\nif [ ! -f \"$planning_dir/validation-feedback.md\" ]; then\n  cat > \"$planning_dir/validation-feedback.md\" <<'EOF'\n# Validation Feedback\n\n- none yet\nEOF\nfi\nswift build\nprintf 'workspace-ready'"
+  ];
+
+  InventoryFailures [
+    shape=box,
+    label="Inventory failures",
+    auto_status=true,
+    prompt="Run CEDAR_CORPUS_LIMIT=all swift test --filter CorpusValidation to get the current failure summary. Then investigate the root causes by reading failing test .cedar policies, .cedarschema schemas (from .ai/corpus-tests/), and JSON schemas (from .ai/corpus-tests-json-schemas/). Read Sources/CedarSpecSwift/Validation.swift and Sources/CedarSpecSwift/SchemaLoader.swift to understand the current implementation. Group failures by root cause. Write a concise root-cause analysis to $planning_dir/failure-analysis.md. Common patterns: 1) JSON schema loader not parsing certain type shapes correctly, 2) validatePolicies not understanding certain expression patterns, 3) validateRequest not matching action appliesTo constraints, 4) entity type enum/tag support gaps."
+  ];
+
+  PlanFixes [
+    shape=box,
+    label="Plan fixes",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read $planning_dir/failure-analysis.md and update $planning_dir/implementation-spec.md. Bundle ALL fixes into 1-3 large slices. Each checklist item = one root-cause bug. No doc items. Verification: run CEDAR_CORPUS_LIMIT=all swift test --filter CorpusValidation and check counts. Also CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT to ensure auth DRT stays 100%."
+  ];
+
+  CritiquePlan [
+    shape=box,
+    label="Critique plan",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Critique $planning_dir/implementation-spec.md for missing root causes and overly granular slices. Write SHORT critique to $planning_dir/plan-critique.md."
+  ];
+
+  MergePlan [
+    shape=box,
+    label="Merge plan",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Apply critique, keep slices large. Update $planning_dir/implementation-spec.md."
+  ];
+
+  ImplementFixes [
+    shape=box,
+    label="Implement fixes",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    allow_partial=true,
+    prompt="Read $planning_dir/implementation-spec.md and implement the Next Slice. Read failing test inputs to understand what the validator should accept. Fix Validation.swift and/or SchemaLoader.swift. Run CEDAR_CORPUS_LIMIT=all swift test --filter CorpusValidation to check progress. Also run CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT to verify auth DRT stays 100%. Mark items [x] only when confirmed fixed."
+  ];
+
+  RunValidation [
+    shape=parallelogram,
+    label="Run validation corpus",
+    tool_command="set -eu\nswift build >/tmp/cedar-val-build.log 2>&1 || {\n  printf 'BUILD_FAIL\\n'\n  tail -n 120 /tmp/cedar-val-build.log || true\n  exit 1\n}\nCEDAR_CORPUS_LIMIT=all swift test --filter CorpusValidation >/tmp/cedar-val-test.log 2>&1\ntail -n 20 /tmp/cedar-val-test.log\nCEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT >/tmp/cedar-drt-test.log 2>&1 || true\ngrep -E 'Passed:|Failed:' /tmp/cedar-drt-test.log\nprintf 'VALIDATION_RAN'"
+  ];
+
+  ReviewResults [
+    shape=box,
+    label="Review results",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    goal_gate=true,
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Read the validation test output. Check all categories: policy strict, policy permissive, entity, request strict, request permissive. Also verify auth DRT is still 7750/7750. Return success ONLY if ALL categories show 0 failed AND auth DRT is 100%. Return retry if any failures remain."
+  ];
+
+  CheckCompletion [
+    shape=parallelogram,
+    label="Check completion",
+    tool_command="set -eu\nif rg -n '^- \\[ \\]' \"$planning_dir/implementation-spec.md\" >/dev/null 2>&1; then\n  printf 'INCOMPLETE'\n  exit 1\nfi\nprintf 'COMPLETE'"
+  ];
+
+  Postmortem [
+    shape=box,
+    label="Retry postmortem",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read /tmp/cedar-val-test.log. Write postmortem to $planning_dir/postmortem.md: how many failures remain per category, root causes, next fix."
+  ];
+
+  Start -> EnsureWorkspace;
+  EnsureWorkspace -> InventoryFailures;
+  InventoryFailures -> PlanFixes;
+  PlanFixes -> CritiquePlan;
+  CritiquePlan -> MergePlan;
+  MergePlan -> ImplementFixes;
+  ImplementFixes -> RunValidation;
+  RunValidation -> ReviewResults [condition="outcome=success", label="ran"];
+  RunValidation -> Postmortem [condition="outcome=fail", label="fix-build", loop_restart=true];
+  MergePlan -> Postmortem [condition="outcome=retry", label="retry-plan"];
+  MergePlan -> Exit [condition="outcome=fail", label="plan-blocked"];
+  ReviewResults -> CheckCompletion [condition="outcome=success", label="all-pass"];
+  ReviewResults -> Postmortem [condition="outcome=retry", label="failures-remain"];
+  ReviewResults -> Exit [condition="outcome=fail", label="blocked"];
+  CheckCompletion -> Exit [condition="outcome=success", label="done"];
+  CheckCompletion -> PlanFixes [condition="outcome=fail", label="next-slice", loop_restart=true];
+  Postmortem -> PlanFixes [loop_restart=true, label="retry"];
+}

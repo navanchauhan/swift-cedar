@@ -1,0 +1,124 @@
+digraph CedarFinalPolish {
+  graph [
+    label="Cedar Final Polish — ship-ready",
+    goal="Complete all remaining features to make swift-cedar a fully ship-ready package. The package already has 38 source files, 15.5K lines, 100% DRT and validation corpus pass rates. This run must add: 1) Entity slicing (extract minimal entity subset needed for evaluation, matching Cedar/Spec/Slice.lean — sliceEUIDs and sliceAtLevel), 2) Batch authorization API (evaluate multiple requests efficiently with variable substitution, similar to cedar-go's batch package), 3) Cedar code formatter (pretty-print policies with consistent indentation and style), 4) CLI executable target named 'cedar' with subcommands: authorize (run authorization), validate (validate policies/entities/requests against schema), format (format Cedar policy files), evaluate (evaluate a single expression), 5) README.md with: project description, installation (SPM), usage example matching cedar-go README, API overview, CLI usage, feature comparison table vs Go/Rust/.NET, corpus test results, license section (Apache 2.0), 6) Swift benchmark target using swift-tools-version 6.0 compatible approach — add a Benchmarks executable target that times authorization, validation, and parsing over the corpus. Bundle related features into large slices. Keep all existing tests passing. The CLI should be a separate executable target in Package.swift named 'cedar'. Do NOT break the existing library target.",
+    source_ref="REPLACE_WITH_REFERENCE_PATH",
+    planning_dir=".ai/cedar-final-polish",
+    target_package="CedarSpecSwift",
+    target_source_dir="Sources/CedarSpecSwift",
+    target_test_dir="Tests/CedarSpecSwiftTests",
+    rankdir=LR,
+    default_max_retry=30,
+    model_stylesheet="* { llm_provider: openai; llm_model: gpt-5.4; reasoning_effort: high; }"
+  ];
+
+  Start [shape=Mdiamond, label="Start"];
+  Exit [shape=Msquare, label="Exit"];
+
+  EnsureWorkspace [
+    shape=parallelogram,
+    label="Ensure workspace",
+    tool_command="set -eu\nmkdir -p \"$planning_dir\"\nif [ ! -f \"$planning_dir/implementation-spec.md\" ]; then\n  cat > \"$planning_dir/implementation-spec.md\" <<'EOF'\n# Final Polish Plan\n\n## Goal\n- Ship-ready swift-cedar.\n\n## Checklist\n- [ ] Placeholder.\n\n## Next Slice\n- Pending.\nEOF\nfi\nif [ ! -f \"$planning_dir/validation-feedback.md\" ]; then\n  cat > \"$planning_dir/validation-feedback.md\" <<'EOF'\n# Validation Feedback\n\n- none yet\nEOF\nfi\nswift build\nprintf 'workspace-ready'"
+  ];
+
+  InventoryGaps [
+    shape=box,
+    label="Inventory gaps",
+    auto_status=true,
+    prompt="Read the existing package: all files in Sources/CedarSpecSwift/, Package.swift, Examples/main.swift, and the Lean Spec/Slice.lean at $source_ref for entity slicing reference. Also read /tmp/cedar-go for their batch API (x/exp/batch/) and CLI patterns. Check /tmp/cedar-dotnet for their benchmark approach. Write a gap analysis to $planning_dir/gap-analysis.md covering exactly what needs to be added for: entity slicing, batch authorization, code formatter, CLI tool, README, and benchmarks."
+  ];
+
+  PlanWork [
+    shape=box,
+    label="Plan work",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read $planning_dir/gap-analysis.md and update $planning_dir/implementation-spec.md. CRITICAL: Bundle into 2-3 LARGE slices. Suggested grouping: Slice 1 = entity slicing + batch authorization + formatter (library additions). Slice 2 = CLI tool + benchmarks (executable targets + Package.swift changes). Slice 3 = README.md. Keep checklist items under 10. No doc-refresh items."
+  ];
+
+  CritiquePlan [
+    shape=box,
+    label="Critique plan",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Critique $planning_dir/implementation-spec.md for missing features and overly small slices. Write SHORT critique to $planning_dir/plan-critique.md."
+  ];
+
+  MergePlan [
+    shape=box,
+    label="Merge plan",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Apply critique. Keep slices large. Update $planning_dir/implementation-spec.md."
+  ];
+
+  ImplementSlice [
+    shape=box,
+    label="Implement slice",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    allow_partial=true,
+    prompt="Implement the Next Slice. For entity slicing: port from Cedar/Spec/Slice.lean — implement sliceEUIDs (extract referenced EntityUIDs from values/expressions/requests) and sliceAtLevel (BFS entity extraction to depth). For batch auth: implement a batchAuthorize function that takes a request template with variable slots and iterates over variable domains. For formatter: implement formatCedar that pretty-prints policies with consistent 2-space indentation. For CLI: create Sources/CedarCLI/main.swift with ArgumentParser-free argument handling (keep zero dependencies) supporting subcommands authorize, validate, format, evaluate. For benchmarks: create Sources/Benchmarks/main.swift that times corpus authorization and validation. For README: write README.md at the repo root. IMPORTANT: Update Package.swift to add new executable targets. Keep swift build and swift test passing. Mark items [x] when done."
+  ];
+
+  BuildAndTest [
+    shape=parallelogram,
+    label="Build and test",
+    tool_command="set -eu\nswift build >/tmp/cedar-polish-build.log 2>&1 || {\n  printf 'BUILD_FAIL\\n'\n  tail -n 120 /tmp/cedar-polish-build.log || true\n  exit 1\n}\nswift test >/tmp/cedar-polish-test.log 2>&1 || {\n  printf 'TEST_FAIL\\n'\n  tail -n 60 /tmp/cedar-polish-test.log || true\n  exit 1\n}\nprintf 'BUILD_AND_TEST_PASS'"
+  ];
+
+  ReviewSlice [
+    shape=box,
+    label="Review slice",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    goal_gate=true,
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Review the changes. Verify: entity slicing has tests, batch auth has tests, formatter produces valid output, CLI compiles and has help text, README exists and has the example from Examples/main.swift, benchmarks compile. Return success if solid. Do NOT block on cosmetic issues."
+  ];
+
+  CheckCompletion [
+    shape=parallelogram,
+    label="Check completion",
+    tool_command="set -eu\nif rg -n '^- \\[ \\]' \"$planning_dir/implementation-spec.md\" >/dev/null 2>&1; then\n  printf 'INCOMPLETE'\n  exit 1\nfi\nprintf 'COMPLETE'"
+  ];
+
+  Postmortem [
+    shape=box,
+    label="Retry postmortem",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Write postmortem to $planning_dir/postmortem.md: what's done, what failed, next fix."
+  ];
+
+  Start -> EnsureWorkspace;
+  EnsureWorkspace -> InventoryGaps;
+  InventoryGaps -> PlanWork;
+  PlanWork -> CritiquePlan;
+  CritiquePlan -> MergePlan;
+  MergePlan -> ImplementSlice;
+  ImplementSlice -> BuildAndTest;
+  BuildAndTest -> ReviewSlice [condition="outcome=success", label="green"];
+  BuildAndTest -> Postmortem [condition="outcome=fail", label="fix-build", loop_restart=true];
+  MergePlan -> Postmortem [condition="outcome=retry", label="retry-plan"];
+  MergePlan -> Exit [condition="outcome=fail", label="plan-blocked"];
+  ReviewSlice -> CheckCompletion [condition="outcome=success", label="review-pass"];
+  ReviewSlice -> Postmortem [condition="outcome=retry", label="retry"];
+  ReviewSlice -> Exit [condition="outcome=fail", label="blocked"];
+  CheckCompletion -> Exit [condition="outcome=success", label="done"];
+  CheckCompletion -> PlanWork [condition="outcome=fail", label="next-slice", loop_restart=true];
+  Postmortem -> PlanWork [loop_restart=true, label="retry"];
+}

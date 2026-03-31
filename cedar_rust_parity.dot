@@ -1,0 +1,124 @@
+digraph CedarRustParity {
+  graph [
+    label="Cedar Rust Parity (production implementation)",
+    goal="Bring the existing CedarSpecSwift package to full production parity with the Rust cedar-policy/cedar implementation. The package already has: core authorization, all extension types, template linking, JSON loading, schema, validation, diagnostics, RestrictedExpr. This run must add: 1) Cedar text format parser (parse Cedar policy language syntax into Policy/Template ASTs), 2) Cedar text format emitter (pretty-print policies back to Cedar syntax), 3) Entity slicing (extract minimal entity subsets needed for evaluation), 4) Partial evaluation / residual policies (symbolically evaluate policies with unknown variables, producing residual policies), 5) Full validation type-checker matching Lean Cedar/Validation/ depth (action-entity relationship validation, full expression type inference, strict vs permissive modes), 6) Cedar text format round-trip tests proving parse-emit-parse stability. Do NOT re-implement what already exists. Do NOT add CLI tools (out of scope for library). Each slice must be LARGE and bundle multiple related features.",
+    source_ref="REPLACE_WITH_REFERENCE_PATH",
+    planning_dir=".ai/cedar-rust-parity",
+    target_package="CedarSpecSwift",
+    target_source_dir="Sources/CedarSpecSwift",
+    target_test_dir="Tests/CedarSpecSwiftTests",
+    rankdir=LR,
+    default_max_retry=30,
+    model_stylesheet="* { llm_provider: openai; llm_model: gpt-5.4; reasoning_effort: high; }"
+  ];
+
+  Start [shape=Mdiamond, label="Start"];
+  Exit [shape=Msquare, label="Exit"];
+
+  EnsureWorkspace [
+    shape=parallelogram,
+    label="Ensure workspace",
+    tool_command="set -eu\nmkdir -p \"$planning_dir\"\nif [ ! -f \"$planning_dir/reference-inventory.md\" ]; then\n  cat > \"$planning_dir/reference-inventory.md\" <<'EOF'\n# Cedar Rust Parity — Reference Inventory\n\n- Pending initial inventory.\nEOF\nfi\nif [ ! -f \"$planning_dir/implementation-spec.md\" ]; then\n  cat > \"$planning_dir/implementation-spec.md\" <<'EOF'\n# Cedar Rust Parity Plan\n\n## Goal\n- Achieve production parity with Rust cedar-policy/cedar.\n\n## Checklist\n- [ ] Placeholder.\n\n## Next Slice\n- Pending planner update.\nEOF\nfi\nif [ ! -f \"$planning_dir/validation-feedback.md\" ]; then\n  cat > \"$planning_dir/validation-feedback.md\" <<'EOF'\n# Validation Feedback\n\n- none yet\nEOF\nfi\nswift build\nprintf 'workspace-ready'"
+  ];
+
+  InventoryReference [
+    shape=box,
+    label="Inventory reference",
+    auto_status=true,
+    prompt="Inventory what already exists in this Swift package (read all files in Sources/CedarSpecSwift/ and Tests/CedarSpecSwiftTests/) and what the Rust cedar-policy implementation covers by inspecting $source_ref. Focus on identifying the GAPS: what Rust has that this Swift package does not. Also check cedar-go at /tmp/cedar-go for comparison. Write a concise gap analysis to $planning_dir/reference-inventory.md covering: 1) Cedar text format parser (tokenizer + recursive descent for Cedar syntax), 2) Cedar text format emitter/pretty-printer, 3) Entity slicing, 4) Partial evaluation, 5) Validation depth gaps vs Cedar/Validation/ in Lean. Do NOT inventory what already works."
+  ];
+
+  PlanImplementation [
+    shape=box,
+    label="Plan implementation",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read $planning_dir/reference-inventory.md and $planning_dir/validation-feedback.md, then update $planning_dir/implementation-spec.md. CRITICAL RULES: 1) Each 'Next Slice' MUST bundle as many related features as possible — never split what can be done together. Aim for 2-4 total slices to complete everything. 2) Do NOT add checklist items for documentation, doc refreshes, or summary files — only code and tests. 3) Keep total unchecked checklist items under 10. 4) The existing package already has 33 source files and 316 tests — build on top of that, do not rewrite. Preserve truthful completed [x] items and set 'Next Slice' to one large bundled chunk."
+  ];
+
+  CritiquePlan [
+    shape=box,
+    label="Critique plan",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Critique $planning_dir/implementation-spec.md for: 1) slices that are too small and should be merged, 2) missing features needed for Rust parity, 3) unnecessary scope creep beyond what Rust cedar-policy actually provides. Write a SHORT critique to $planning_dir/plan-critique.md. Bias toward fewer, larger slices."
+  ];
+
+  MergePlanReview [
+    shape=box,
+    label="Merge plan review",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Read $planning_dir/implementation-spec.md and $planning_dir/plan-critique.md. Apply the critique: merge small slices, remove non-code items, keep the 'Next Slice' as a LARGE bundled chunk. Update $planning_dir/implementation-spec.md in place."
+  ];
+
+  ImplementSlice [
+    shape=box,
+    label="Implement next slice",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    allow_partial=true,
+    prompt="Read $planning_dir/implementation-spec.md and implement the current 'Next Slice'. Use $source_ref as the read-only semantic reference, and /tmp/cedar-go as an additional reference for how Go implements similar features. IMPLEMENT AS MUCH AS POSSIBLE in one pass. Make concrete code changes in $target_source_dir and tests in $target_test_dir, mark completed items as [x]. Keep swift build and swift test passing."
+  ];
+
+  BuildAndTest [
+    shape=parallelogram,
+    label="Build and test",
+    tool_command="set -eu\nswift build >/tmp/cedar-parity-build.log 2>&1 || {\n  printf 'BUILD_FAIL\\n'\n  tail -n 120 /tmp/cedar-parity-build.log || true\n  exit 1\n}\nswift test >/tmp/cedar-parity-test.log 2>&1 || {\n  printf 'TEST_FAIL\\n'\n  tail -n 120 /tmp/cedar-parity-test.log || true\n  exit 1\n}\nprintf 'BUILD_AND_TEST_PASS'"
+  ];
+
+  ReviewSlice [
+    shape=box,
+    label="Review slice",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    goal_gate=true,
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Review the current package for correctness against the Cedar spec and Rust parity goals. Check test coverage and false [x] claims. Update $planning_dir/validation-feedback.md. Return success if the slice is solid. Return retry only for real bugs. Do NOT flag docs or style issues as blockers."
+  ];
+
+  CheckCompletion [
+    shape=parallelogram,
+    label="Check completion",
+    tool_command="set -eu\nif rg -n '^- \\[ \\]' \"$planning_dir/implementation-spec.md\" >/dev/null 2>&1; then\n  printf 'INCOMPLETE'\n  exit 1\nfi\nprintf 'COMPLETE'"
+  ];
+
+  Postmortem [
+    shape=box,
+    label="Retry postmortem",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Write a concise retry postmortem into $planning_dir/postmortem.md covering what was implemented, why the last loop did not pass, and the best next recovery step. If failure was due to non-code checklist items, recommend removing them."
+  ];
+
+  Start -> EnsureWorkspace;
+  EnsureWorkspace -> InventoryReference;
+  InventoryReference -> PlanImplementation;
+  PlanImplementation -> CritiquePlan;
+  CritiquePlan -> MergePlanReview;
+  MergePlanReview -> ImplementSlice;
+  ImplementSlice -> BuildAndTest;
+  BuildAndTest -> ReviewSlice [condition="outcome=success", label="green"];
+  BuildAndTest -> Postmortem [condition="outcome=fail", label="fix-build", loop_restart=true];
+  MergePlanReview -> Postmortem [condition="outcome=retry", label="retry-plan"];
+  MergePlanReview -> Exit [condition="outcome=fail", label="plan-blocked"];
+  ReviewSlice -> CheckCompletion [condition="outcome=success", label="review-pass"];
+  ReviewSlice -> Postmortem [condition="outcome=retry", label="retry"];
+  ReviewSlice -> Exit [condition="outcome=fail", label="blocked"];
+  CheckCompletion -> Exit [condition="outcome=success", label="done"];
+  CheckCompletion -> PlanImplementation [condition="outcome=fail", label="next-slice", loop_restart=true];
+  Postmortem -> PlanImplementation [loop_restart=true, label="retry"];
+}

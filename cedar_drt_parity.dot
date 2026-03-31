@@ -1,0 +1,124 @@
+digraph CedarDRTParity {
+  graph [
+    label="Cedar DRT 100% Parity",
+    goal="Fix all remaining DRT corpus test failures to achieve 100% pass rate on the 7,750 official Cedar differential randomized tests. Current state: 98.6% (7,642 pass, 15 decision mismatches, 91 parse errors, 2 crashes). Three categories of bugs to fix: 1) Cedar text parser: backslash escape sequences in string literals, Unicode entity UIDs with special characters, unterminated string edge cases, backtick identifier syntax. 2) Evaluator/authorizer semantic bugs: 15 cases where we return deny but the Lean spec says allow — investigate each by reading the .cedar policy and .entities.json, determine what expression or scope matching is wrong. 3) Two crash-inducing inputs that cause Range precondition failures. Run the DRT corpus test after each fix with: CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT. The test runner is at Tests/CedarSpecSwiftTests/CorpusDRTTests.swift. Do NOT rewrite the test runner. Fix the library source files only.",
+    source_ref="REPLACE_WITH_REFERENCE_PATH",
+    planning_dir=".ai/cedar-drt-parity",
+    target_package="CedarSpecSwift",
+    target_source_dir="Sources/CedarSpecSwift",
+    target_test_dir="Tests/CedarSpecSwiftTests",
+    rankdir=LR,
+    default_max_retry=30,
+    model_stylesheet="* { llm_provider: openai; llm_model: gpt-5.4; reasoning_effort: high; }"
+  ];
+
+  Start [shape=Mdiamond, label="Start"];
+  Exit [shape=Msquare, label="Exit"];
+
+  EnsureWorkspace [
+    shape=parallelogram,
+    label="Ensure workspace",
+    tool_command="set -eu\nmkdir -p \"$planning_dir\"\nif [ ! -f \"$planning_dir/implementation-spec.md\" ]; then\n  cat > \"$planning_dir/implementation-spec.md\" <<'EOF'\n# Cedar DRT 100% Parity Plan\n\n## Goal\n- Fix all DRT corpus test failures to reach 100% pass rate.\n\n## Checklist\n- [ ] Placeholder.\n\n## Next Slice\n- Pending planner update.\nEOF\nfi\nif [ ! -f \"$planning_dir/validation-feedback.md\" ]; then\n  cat > \"$planning_dir/validation-feedback.md\" <<'EOF'\n# Validation Feedback\n\n- none yet\nEOF\nfi\nswift build\nprintf 'workspace-ready'"
+  ];
+
+  InventoryFailures [
+    shape=box,
+    label="Inventory failures",
+    auto_status=true,
+    prompt="Run the DRT corpus tests to get the current failure list: execute `CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT 2>&1 | tail -60` and capture all failures. Then for each category of failure, read the specific failing .cedar policy files, .entities.json files, and .json manifests to understand the root cause. Group failures by root cause (e.g. all backslash-escape failures share one parser bug). Write a concise root-cause analysis to $planning_dir/failure-analysis.md with: each distinct bug, which test hashes it affects, and what source file needs fixing."
+  ];
+
+  PlanFixes [
+    shape=box,
+    label="Plan fixes",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read $planning_dir/failure-analysis.md and $planning_dir/validation-feedback.md. Update $planning_dir/implementation-spec.md with a plan to fix ALL failures. CRITICAL RULES: 1) Bundle ALL fixes into 1-2 large slices — one for parser fixes, one for semantic fixes. 2) Each checklist item = one root-cause bug fix. 3) No documentation items. 4) The verification step for each slice is: run CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT and check that the failure count decreased. 5) Also remove any entries from the skip list in CorpusDRTTests.swift once crashes are fixed. 6) The final goal is 0 failures, 0 parse errors, 0 skipped."
+  ];
+
+  CritiquePlan [
+    shape=box,
+    label="Critique plan",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Critique $planning_dir/implementation-spec.md. Are the root causes correctly identified? Are any fixes missing? Are slices too granular? Write a SHORT critique to $planning_dir/plan-critique.md."
+  ];
+
+  MergePlan [
+    shape=box,
+    label="Merge plan",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Apply $planning_dir/plan-critique.md to $planning_dir/implementation-spec.md. Keep slices large and bundled. Update in place."
+  ];
+
+  ImplementFixes [
+    shape=box,
+    label="Implement fixes",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    allow_partial=true,
+    prompt="Read $planning_dir/implementation-spec.md and implement the current 'Next Slice'. For each bug: 1) Read the failing test's .cedar and .entities.json to understand the exact input. 2) Read the relevant source file (CedarText.swift for parser bugs, Evaluator.swift/Authorizer.swift/Policy.swift for semantic bugs). 3) Fix the bug. 4) Verify by running: CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT. Mark items [x] only when the specific failure is confirmed fixed. If crashes were fixed, also update CorpusDRTTests.swift to remove entries from the skip list."
+  ];
+
+  RunDRT [
+    shape=parallelogram,
+    label="Run DRT corpus",
+    tool_command="set -eu\nswift build >/tmp/cedar-drt-build.log 2>&1 || {\n  printf 'BUILD_FAIL\\n'\n  tail -n 120 /tmp/cedar-drt-build.log || true\n  exit 1\n}\nCEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT >/tmp/cedar-drt-test.log 2>&1 || {\n  printf 'TEST_FAIL\\n'\n  tail -n 60 /tmp/cedar-drt-test.log || true\n  exit 1\n}\ntail -n 20 /tmp/cedar-drt-test.log\nprintf 'DRT_PASS'"
+  ];
+
+  ReviewResults [
+    shape=box,
+    label="Review results",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    goal_gate=true,
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Read the DRT test output. If there are ANY failures (Failed > 0, Parse Errors > 0, or Skipped > 0), return retry and update $planning_dir/validation-feedback.md with the remaining failures. Return success ONLY if the output shows: Failed: 0, Parse Errors: 0, Skipped: 0. Do NOT accept partial success."
+  ];
+
+  CheckCompletion [
+    shape=parallelogram,
+    label="Check completion",
+    tool_command="set -eu\nif rg -n '^- \\[ \\]' \"$planning_dir/implementation-spec.md\" >/dev/null 2>&1; then\n  printf 'INCOMPLETE'\n  exit 1\nfi\nprintf 'COMPLETE'"
+  ];
+
+  Postmortem [
+    shape=box,
+    label="Retry postmortem",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read the latest DRT test output from /tmp/cedar-drt-test.log. Write a concise postmortem to $planning_dir/postmortem.md: how many failures remain, what categories, and the best next fix. Focus on the SPECIFIC failing test hashes and their root causes."
+  ];
+
+  Start -> EnsureWorkspace;
+  EnsureWorkspace -> InventoryFailures;
+  InventoryFailures -> PlanFixes;
+  PlanFixes -> CritiquePlan;
+  CritiquePlan -> MergePlan;
+  MergePlan -> ImplementFixes;
+  ImplementFixes -> RunDRT;
+  RunDRT -> ReviewResults [condition="outcome=success", label="drt-ran"];
+  RunDRT -> Postmortem [condition="outcome=fail", label="fix-build", loop_restart=true];
+  MergePlan -> Postmortem [condition="outcome=retry", label="retry-plan"];
+  MergePlan -> Exit [condition="outcome=fail", label="plan-blocked"];
+  ReviewResults -> CheckCompletion [condition="outcome=success", label="all-pass"];
+  ReviewResults -> Postmortem [condition="outcome=retry", label="failures-remain"];
+  ReviewResults -> Exit [condition="outcome=fail", label="blocked"];
+  CheckCompletion -> Exit [condition="outcome=success", label="done"];
+  CheckCompletion -> PlanFixes [condition="outcome=fail", label="next-slice", loop_restart=true];
+  Postmortem -> PlanFixes [loop_restart=true, label="retry"];
+}

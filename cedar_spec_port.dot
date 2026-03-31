@@ -1,0 +1,126 @@
+digraph CedarSpecPort {
+  graph [
+    label="Cedar Spec Port (single-directory Attractor run)",
+    goal="Implement a complete Swift package in the current working directory by porting all Cedar semantics from the reference repository, including: core evaluation and authorization, all extension families (Decimal, IPAddr, Datetime, Duration), template linking (Template, TemplateLinkedPolicy, Slot, SlotEnv), RestrictedExpr and request-context restriction, JSON AST and corpus loading, policy and entity loading with validation, schema representation and ingestion, entity hierarchy and cycle detection, diagnostics and error aggregation, and traversal-bound calibration. All unchecked spec items must be implemented, not deferred.",
+    source_ref="REPLACE_WITH_REFERENCE_PATH",
+    planning_dir=".ai/cedar-spec-port",
+    target_package="CedarSpecSwift",
+    target_source_dir="Sources/CedarSpecSwift",
+    target_source_file="Sources/CedarSpecSwift/CedarSpecSwift.swift",
+    target_test_dir="Tests/CedarSpecSwiftTests",
+    target_test_file="Tests/CedarSpecSwiftTests/CedarSpecSwiftTests.swift",
+    rankdir=LR,
+    default_max_retry=30,
+    model_stylesheet="* { llm_provider: openai; llm_model: gpt-5.4; reasoning_effort: high; }"
+  ];
+
+  Start [shape=Mdiamond, label="Start"];
+  Exit [shape=Msquare, label="Exit"];
+
+  EnsureWorkspace [
+    shape=parallelogram,
+    label="Ensure workspace",
+    tool_command="set -eu\nmkdir -p \"$planning_dir\" \"$target_source_dir\" \"$target_test_dir\"\nif [ ! -f Package.swift ]; then\n  cat > Package.swift <<'EOF'\n// swift-tools-version: 6.0\nimport PackageDescription\n\nlet package = Package(\n    name: \"$target_package\",\n    products: [\n        .library(name: \"$target_package\", targets: [\"$target_package\"]),\n    ],\n    targets: [\n        .target(name: \"$target_package\"),\n        .testTarget(name: \"${target_package}Tests\", dependencies: [\"$target_package\"]),\n    ]\n)\nEOF\nfi\nif [ ! -f .gitignore ]; then\n  cat > .gitignore <<'EOF'\n.build/\n.swiftpm/\n.DS_Store\nEOF\nfi\nif [ ! -f \"$planning_dir/reference-inventory.md\" ]; then\n  cat > \"$planning_dir/reference-inventory.md\" <<'EOF'\n# Cedar Reference Inventory\n\n- Pending initial inventory.\nEOF\nfi\nif [ ! -f \"$planning_dir/implementation-spec.md\" ]; then\n  cat > \"$planning_dir/implementation-spec.md\" <<'EOF'\n# Cedar Spec Port Plan\n\n## Goal\n- Port all Cedar semantics into this Swift package.\n\n## Checklist\n- [ ] Placeholder.\n\n## Next Slice\n- Pending planner update.\nEOF\nfi\nif [ ! -f \"$planning_dir/validation-feedback.md\" ]; then\n  cat > \"$planning_dir/validation-feedback.md\" <<'EOF'\n# Validation Feedback\n\n- none yet\nEOF\nfi\nprintf 'workspace-ready'"
+  ];
+
+  InventoryReference [
+    shape=box,
+    label="Inventory reference",
+    auto_status=true,
+    prompt="Use tools to inspect $source_ref, especially the top-level README plus the cedar-lean, cedar-drt, cedar-lean-cli, cedar-lean-ffi, and cedar-policy-generators directories. Update $planning_dir/reference-inventory.md in place with: repository structure, build/runtime dependencies, likely porting order, and the first two Swift implementation slices worth tackling. Keep it concise and concrete."
+  ];
+
+  PlanImplementation [
+    shape=box,
+    label="Plan implementation",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read $planning_dir/reference-inventory.md and $planning_dir/validation-feedback.md, then update $planning_dir/implementation-spec.md in place. CRITICAL RULES: 1) Each 'Next Slice' MUST bundle as many related features as possible into ONE large implementation chunk — never split what can be done together. 2) Do NOT add checklist items for documentation updates, doc refreshes, or summary file maintenance — only add items that require code changes or new tests. 3) Do NOT expand a single feature into many micro-items — one checklist item per feature area is enough. 4) Keep the total unchecked checklist items under 15 at any time. Preserve truthful completed [x] items, and set 'Next Slice' to one large bundled implementation chunk."
+  ];
+
+  CritiquePlan [
+    shape=box,
+    label="Critique plan",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Critique $planning_dir/implementation-spec.md for: 1) slices that are too small and should be merged, 2) checklist items that are documentation-only and should be removed, 3) missing features that should be added, 4) scope creep from the planner adding items beyond what the goal requires. Write a SHORT critique to $planning_dir/plan-critique.md. Bias toward fewer, larger slices."
+  ];
+
+  MergePlanReview [
+    shape=box,
+    label="Merge plan review",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Read $planning_dir/implementation-spec.md and $planning_dir/plan-critique.md. Apply the critique: merge small slices, remove documentation-only checklist items, keep items actionable and code-focused. Update $planning_dir/implementation-spec.md in place. The 'Next Slice' should be a LARGE bundled chunk of work. Do not create single-feature slices when multiple features can be implemented together."
+  ];
+
+  ImplementSlice [
+    shape=box,
+    label="Implement next slice",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    allow_partial=true,
+    prompt="Read $planning_dir/implementation-spec.md and implement the current 'Next Slice' in this package. Use $source_ref as the read-only semantic reference. IMPLEMENT AS MUCH AS POSSIBLE in one pass — do not stop early or defer work to a later slice if you can do it now. Make concrete code changes in $target_source_dir and related test/support files, add or update tests, and mark all truly completed checklist items as [x]. Keep the package buildable. Update the Notes section with a short summary of what changed."
+  ];
+
+  BuildAndTest [
+    shape=parallelogram,
+    label="Build and test",
+    tool_command="set -eu\nswift build >/tmp/cedar-spec-port-build.log 2>&1 || {\n  printf 'BUILD_FAIL\\n'\n  tail -n 120 /tmp/cedar-spec-port-build.log || true\n  exit 1\n}\nswift test >/tmp/cedar-spec-port-test.log 2>&1 || {\n  printf 'TEST_FAIL\\n'\n  tail -n 120 /tmp/cedar-spec-port-test.log || true\n  exit 1\n}\nprintf 'BUILD_AND_TEST_PASS'"
+  ];
+
+  ReviewSlice [
+    shape=box,
+    label="Review slice",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    goal_gate=true,
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Review the current package for semantic correctness against $planning_dir/implementation-spec.md, $planning_dir/reference-inventory.md, and $source_ref. Check: test coverage, false [x] claims, missing semantics, build/test sufficiency. Update $planning_dir/validation-feedback.md with consolidated next actions. Update $planning_dir/implementation-spec.md so all [x] items remain truthful. Return success if the slice is solid and ready to advance. Return retry only for real bugs or missing tests. Return fail only if fundamentally blocked. Do NOT flag documentation refreshes or summary file updates as blockers."
+  ];
+
+  CheckCompletion [
+    shape=parallelogram,
+    label="Check completion",
+    tool_command="set -eu\nif rg -n '^- \\[ \\]' \"$planning_dir/implementation-spec.md\" >/dev/null 2>&1; then\n  printf 'INCOMPLETE'\n  exit 1\nfi\nprintf 'COMPLETE'"
+  ];
+
+  Postmortem [
+    shape=box,
+    label="Retry postmortem",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Write a concise retry postmortem into $planning_dir/postmortem.md covering what is implemented, why the last loop did not pass, and the best next recovery step. If the failure was due to documentation-only checklist items or overly granular slicing, recommend consolidating or removing those items."
+  ];
+
+  Start -> EnsureWorkspace;
+  EnsureWorkspace -> InventoryReference;
+  InventoryReference -> PlanImplementation;
+  PlanImplementation -> CritiquePlan;
+  CritiquePlan -> MergePlanReview;
+  MergePlanReview -> ImplementSlice;
+  ImplementSlice -> BuildAndTest;
+  BuildAndTest -> ReviewSlice [condition="outcome=success", label="green"];
+  BuildAndTest -> Postmortem [condition="outcome=fail", label="fix-build", loop_restart=true];
+  MergePlanReview -> Postmortem [condition="outcome=retry", label="retry-plan"];
+  MergePlanReview -> Exit [condition="outcome=fail", label="plan-blocked"];
+  ReviewSlice -> CheckCompletion [condition="outcome=success", label="review-pass"];
+  ReviewSlice -> Postmortem [condition="outcome=retry", label="retry"];
+  ReviewSlice -> Exit [condition="outcome=fail", label="blocked"];
+  CheckCompletion -> Exit [condition="outcome=success", label="done"];
+  CheckCompletion -> PlanImplementation [condition="outcome=fail", label="next-slice", loop_restart=true];
+  Postmortem -> PlanImplementation [loop_restart=true, label="retry"];
+}

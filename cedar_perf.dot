@@ -1,0 +1,124 @@
+digraph CedarPerf {
+  graph [
+    label="Cedar Performance — compiled evaluator",
+    goal="Close the 70x authorization performance gap with Go by adding a compiled evaluator. Current: 1.3s for 62,000 requests (21μs/req). Target: under 100ms (sub-2μs/req). The current evaluator in Evaluator.swift calls policy.toExpr() on every evaluation, rebuilding the expression tree each time, then recursively interprets it. Go and Rust compile policies into pre-compiled closure trees at parse time. Implement the same approach: 1) Add a CompiledPolicy type that converts an Expr AST into a closure tree (each node is a Swift closure that captures its children). 2) Add a CompiledPolicies collection that pre-compiles all policies and indexes them by effect. 3) Add a compiledIsAuthorized function that evaluates compiled closures instead of walking the AST. 4) Update loadPoliciesCedar to optionally return compiled policies. 5) The DRT test runner (CorpusDRTTests.swift) measures auth time separately — use it to verify: CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT. Current auth time is 1.3s, target is under 100ms. 6) Also optimize the JSON tokenizer in JSONAST.swift — currently character-by-character on Unicode scalars, switch to byte-level processing on UTF8View for the load path. 7) Keep all DRT and validation corpus tests at 100%. Bundle into 1-2 large slices.",
+    source_ref="REPLACE_WITH_REFERENCE_PATH",
+    planning_dir=".ai/cedar-perf",
+    target_package="CedarSpecSwift",
+    target_source_dir="Sources/CedarSpecSwift",
+    target_test_dir="Tests/CedarSpecSwiftTests",
+    rankdir=LR,
+    default_max_retry=30,
+    model_stylesheet="* { llm_provider: openai; llm_model: gpt-5.4; reasoning_effort: high; }"
+  ];
+
+  Start [shape=Mdiamond, label="Start"];
+  Exit [shape=Msquare, label="Exit"];
+
+  EnsureWorkspace [
+    shape=parallelogram,
+    label="Ensure workspace",
+    tool_command="set -eu\nmkdir -p \"$planning_dir\"\nif [ ! -f \"$planning_dir/implementation-spec.md\" ]; then\n  cat > \"$planning_dir/implementation-spec.md\" <<'EOF'\n# Performance Optimization Plan\n\n## Goal\n- Sub-100ms authorization for 62,000 requests.\n\n## Checklist\n- [ ] Placeholder.\n\n## Next Slice\n- Pending.\nEOF\nfi\nif [ ! -f \"$planning_dir/validation-feedback.md\" ]; then\n  cat > \"$planning_dir/validation-feedback.md\" <<'EOF'\n# Validation Feedback\n\n- none yet\nEOF\nfi\nswift build\nprintf 'workspace-ready'"
+  ];
+
+  ProfileBaseline [
+    shape=box,
+    label="Profile baseline",
+    auto_status=true,
+    prompt="Run the DRT corpus benchmark to establish baseline: CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT. Record the Load time and Auth time from the output. Then read Sources/CedarSpecSwift/Evaluator.swift, Sources/CedarSpecSwift/Authorizer.swift, Sources/CedarSpecSwift/Policy.swift (especially toExpr), and Sources/CedarSpecSwift/JSONAST.swift to understand the current hot path. Also read /tmp/cedar-go/internal/eval/ to see how Go compiles policies into BoolEvaler closures. Write a profile analysis to $planning_dir/profile-analysis.md with: current bottlenecks, proposed compiled evaluator design, and expected speedup."
+  ];
+
+  PlanOptimizations [
+    shape=box,
+    label="Plan optimizations",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read $planning_dir/profile-analysis.md and update $planning_dir/implementation-spec.md. TWO slices max: Slice 1 = Compiled evaluator (CompiledExpr closure tree, CompiledPolicy, compiled isAuthorized, update Authorizer to use compiled path). Slice 2 = JSON tokenizer optimization (byte-level UTF8View). Each fix must be verified by running DRT and checking auth time dropped. Keep all tests passing."
+  ];
+
+  CritiquePlan [
+    shape=box,
+    label="Critique plan",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Critique $planning_dir/implementation-spec.md for missing optimizations and correctness risks. Write SHORT critique to $planning_dir/plan-critique.md."
+  ];
+
+  MergePlan [
+    shape=box,
+    label="Merge plan",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Apply critique. Update $planning_dir/implementation-spec.md."
+  ];
+
+  ImplementOptimizations [
+    shape=box,
+    label="Implement optimizations",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    allow_partial=true,
+    prompt="Implement the Next Slice. For the compiled evaluator: create a CompiledExpr enum or closure type that pre-compiles each Expr node into a Swift closure capturing its children. The compiled form should avoid: 1) re-creating the expression tree per call (cache toExpr result or compile directly from Policy), 2) indirect enum dispatch overhead (use direct closure calls), 3) repeated CedarMap/CedarSet lookups (pre-index by effect). Add a CompiledPolicies struct and a public func isAuthorizedCompiled that uses it. Wire it into the existing isAuthorized as the default path. Verify correctness: CEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT must still show 7750/7750 passed. Verify performance: Auth time should drop significantly from the 1.3s baseline. Mark items [x] when done."
+  ];
+
+  RunBenchmark [
+    shape=parallelogram,
+    label="Run benchmark",
+    tool_command="set -eu\nswift build >/tmp/cedar-perf-build.log 2>&1 || {\n  printf 'BUILD_FAIL\\n'\n  tail -n 120 /tmp/cedar-perf-build.log || true\n  exit 1\n}\nCEDAR_CORPUS_DIR=.ai/corpus-tests CEDAR_CORPUS_LIMIT=all swift test --filter CorpusDRT >/tmp/cedar-perf-test.log 2>&1 || {\n  printf 'TEST_FAIL\\n'\n  tail -n 60 /tmp/cedar-perf-test.log || true\n  exit 1\n}\ntail -n 15 /tmp/cedar-perf-test.log\nprintf 'BENCHMARK_RAN'"
+  ];
+
+  ReviewResults [
+    shape=box,
+    label="Review results",
+    llm_provider="gemini",
+    llm_model="gemini-3.1-pro-preview-customtools",
+    reasoning_effort="high",
+    goal_gate=true,
+    retry_target="Postmortem",
+    auto_status=true,
+    prompt="Read the benchmark output. Check: 1) DRT still 7750/7750 passed. 2) Auth time decreased from baseline. Return success if auth time is under 200ms AND all tests pass. Return retry if tests pass but auth time is still above 200ms. Return fail if tests broke."
+  ];
+
+  CheckCompletion [
+    shape=parallelogram,
+    label="Check completion",
+    tool_command="set -eu\nif rg -n '^- \\[ \\]' \"$planning_dir/implementation-spec.md\" >/dev/null 2>&1; then\n  printf 'INCOMPLETE'\n  exit 1\nfi\nprintf 'COMPLETE'"
+  ];
+
+  Postmortem [
+    shape=box,
+    label="Retry postmortem",
+    llm_provider="openai",
+    llm_model="gpt-5.4",
+    reasoning_effort="high",
+    auto_status=true,
+    prompt="Read /tmp/cedar-perf-test.log. Write postmortem to $planning_dir/postmortem.md: current auth time, what was tried, why it didn't hit target, next optimization to try."
+  ];
+
+  Start -> EnsureWorkspace;
+  EnsureWorkspace -> ProfileBaseline;
+  ProfileBaseline -> PlanOptimizations;
+  PlanOptimizations -> CritiquePlan;
+  CritiquePlan -> MergePlan;
+  MergePlan -> ImplementOptimizations;
+  ImplementOptimizations -> RunBenchmark;
+  RunBenchmark -> ReviewResults [condition="outcome=success", label="ran"];
+  RunBenchmark -> Postmortem [condition="outcome=fail", label="fix-build", loop_restart=true];
+  MergePlan -> Postmortem [condition="outcome=retry", label="retry-plan"];
+  MergePlan -> Exit [condition="outcome=fail", label="plan-blocked"];
+  ReviewResults -> CheckCompletion [condition="outcome=success", label="fast-enough"];
+  ReviewResults -> Postmortem [condition="outcome=retry", label="too-slow"];
+  ReviewResults -> Exit [condition="outcome=fail", label="broken"];
+  CheckCompletion -> Exit [condition="outcome=success", label="done"];
+  CheckCompletion -> PlanOptimizations [condition="outcome=fail", label="next-slice", loop_restart=true];
+  Postmortem -> PlanOptimizations [loop_restart=true, label="retry"];
+}
